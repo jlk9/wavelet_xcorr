@@ -72,7 +72,7 @@ def store_wavelet_hdf5(input_path, output_path, files, wavelet, level, percentil
 
         coeffs = pywt.wavedec(DAS.T, wavelet, level=level, mode="periodic")
         
-        # TODO: threshold each channel here:
+        # Threshold each channel here:
         if percentile != 0:
             for i in range(0, DAS.shape[1]):
                 
@@ -96,10 +96,108 @@ def store_wavelet_hdf5(input_path, output_path, files, wavelet, level, percentil
 
     return 0
 
+""" Takes thresholded wavelets from store_wavelet_hdf5 and converts them into
+    a sparse format.
+    
+Inputs:
+input_path    the location of the dense thresholded wavelet-domain arrays
+output_path   where to place the sparse array file
+files         the list of thresholded wavelet-domain files to work with
 
+Returns:
+0, but also creates an hdf5 file of sparse wavelet coefficients for each file in input_path. These
+files are located in output_path. Each file has three datasets:
+    1. indices contains the nonzero indices at each row (one 2D array)
+    2. values contains the nonzero values at each row (one 2D array)
+    3. level_lengths contains the number of shift factors ("lengths") for each level
+    4. level_starts shows the starting index for each level, since all levels are stored in one array
 
+We also keep the wavelet and level attributes in our metadata.
+"""
+def make_wavelet_hdf5_sparse(input_path, output_path, files):
+    
+    for file in files:
+        # First we need to extract the dense thresheld coefficients and concatenate them:
+        dense_file            = h5py.File(input_path + file, 'r')
+        wavelet               = dense_file.attrs["wavelet"]
+        level                 = dense_file.attrs["level"]
+        dense_file_all_levels = [dense_file["approximation"][:]] + [dense_file["detail_" + str(_)][:] for _ in range(level, 0, -1)]
+        all_coeffs            = np.concatenate(dense_file_all_levels, axis=1)
+        
+        level_lengths = np.array([_.shape[1] for _ in dense_file_all_levels])
+        level_starts  = np.array([np.sum(level_lengths[:i]) for i in range(len(level_lengths))])
+        
+        dense_file.close()
+        
+        # Now we get the nonzero indices for each row:
+        indices = []
+        values  = []
+        for i in range(all_coeffs.shape[0]):
+            indices.append(np.nonzero(all_coeffs[i])[0])
+            values.append(all_coeffs[i,indices[i]])
+        
+        # Here we stack the indices and values into two arrays:
+        # TODO: zero-pad to avoid issues with uneven lengths:
+        index_array = np.stack(indices, axis=0)
+        value_array = np.stack(values, axis=0)
+        
+        # And here we store this all into an hdf5 file:
+        result = h5py.File(output_path + "sparse_" + file, 'w')
 
+        result.attrs["wavelet"] = wavelet
+        result.attrs["level"]   = level
 
+        result.create_dataset("indices", data=index_array)
+        result.create_dataset("values", data=value_array)
+        result.create_dataset("level_starts", data=level_starts)
+        result.create_dataset("level_lengths", data=level_lengths)
+            
+        result.close()
+    
+    return 0
 
+""" Takes a sparse wavelet coefficients hdf5 file and breaks it up into a list of the wavelet coefficients,
+    useful for our cross-correlation algorithm.
+    
+Inputs:
+input_path    where the sparse wavelet coefficient files are located
+files         the sparse wavelet coefficient file names
 
+Outputs:
+list of the wavelet coefficients for each file. Each file is represented by its own list of tuples for the sparse
+coefficients at each channel and level. The list is sorted:
 
+list of files -> list of channels -> list of levels -> each level is a tuple representinf a sparse vector
+
+"""
+def break_sparse_hdf5(input_path, files):
+    
+    all_file_coeffs = []
+    
+    for file in files:
+        
+        # The list of lists that make up our coefficients across the whole file:
+        file_coeffs = []
+        
+        # We get the necessary information for this file:
+        sparse_coeffs_file = h5py.File(input_path + file, 'r')
+        indices            = sparse_coeffs_file["indices"][:]
+        values             = sparse_coeffs_file["values"][:]
+        level_lengths      = sparse_coeffs_file["level_lengths"][:]
+        level_starts       = np.concatenate([sparse_coeffs_file["level_starts"][:], [sum(level_lengths)]])
+        
+        # Now we go through each channel:
+        for i in range(indices.shape[0]):
+            
+            # Each channel has a different number of entries per level, so we need to find
+            # which subsets of this channel correspond to each level:
+            lv_bds = np.searchsorted(indices[i], level_starts)
+            
+            file_coeffs.append([(indices[i,lv_bds[_]:lv_bds[_+1]] - level_starts[_],
+                                 values[i,lv_bds[_]:lv_bds[_+1]],
+                                 level_lengths[_]) for _ in range(len(level_lengths))])
+            
+        all_file_coeffs.append(file_coeffs)
+        
+    
+    return all_file_coeffs
