@@ -10,17 +10,15 @@ import pywt
 import time
 
 from wavelet_xcorr.support_code.generate_all_weights_functions import generate_stacked_weight_matrices
-
-from wavelet_xcorr.dense_code.calculate_nlevel_xcorrs import calculate_nlevel_xcorrs
-
-from wavelet_xcorr.sparse_code.calculate_nlevel_xcorrs_sparse import calculate_nlevel_xcorrs_sparse
+from wavelet_xcorr.dense_code.calculate_nlevel_xcorrs          import calculate_nlevel_xcorrs
+from wavelet_xcorr.sparse_code.calculate_nlevel_xcorrs_sparse  import calculate_nlevel_xcorrs_sparse
 
 """ Now that we have a correct compute_all_diagonals sparse implementation, we'll try plugging it into our
 	wavelet domain xcorr algorithm and evaluating.
 
 	After that, we'll incorporate sparsity into the beginning and end terms. The easiest way to do that is
 	probably by just using numpy searchsorted and indexing to correctly form the begin and end data matrices,
-	and then jsut use normal dense operations. (We can try sparse matrix operations there if it's too slow).
+	and then just use normal dense operations. (We can try sparse matrix operations there if it's too slow).
 
 """
 
@@ -28,20 +26,29 @@ wavelet = "db3"
 level   = 3
 mode    = "periodic"
 
-data_file = "../../minos_12_20/minosNewPath1_19DEC18_0830_60s_ph_CH(1)_SEQ(1218)_2018-12-20_09.43.19.27300.hdf5"
-h5_file   = h5py.File(data_file, 'r')
-DAS       = h5_file['DAS'][:]
-DAS       = DAS.astype(np.float64)
+# Here we'll test our timing and accuracy on an autocorrelation:
 
-# Here we'll test our timing and accuracy on one channel cross correlation:
-signal1 = DAS[:, 1001]
-signal2 = DAS[:15000, 1000]
+x           = np.arange(0, 30000)
+signal1     = np.zeros(30000)
+frequencies = [2, 4, 6, 8, 30, 120]
+amplitudes  = [200, 400, 400, 200, 1000]
+
+for i,j in zip(frequencies, amplitudes):
+    
+    signal1 += j * np.sin(i * .004 * np.pi * x)
+    
+noise_mean = 0
+noise_std  = 2000
+signal1   += np.random.normal(noise_mean, noise_std, len(signal1))
+
+signal2 = signal1[:15000]
+
 coeffs1 = pywt.wavedec(signal1, wavelet, level=level, mode=mode)
 coeffs2 = pywt.wavedec(signal2, wavelet, level=level, mode=mode)
 lagmax  = 1000
 
-# First, we need to threshold our wavelet functions and create their sparse representations. For now, we're thresholding
-# each level separately.
+# First, we need to threshold our wavelet functions and create their sparse representations.
+# For now, we're thresholding each level separately.
 threshold      = 90
 thresh_coeffs1 = []
 thresh_coeffs2 = []
@@ -56,10 +63,6 @@ for i in range(len(coeffs1)):
 
 
 # Let's just check and make sure our weight matrices are reorganized properly:
-wavelet = "db3"
-level   = 3
-mode    = "periodic"
-
 stacked_weight_matrices, stacked_mixed_weight_matrices, mixed_endpoint_indices = generate_stacked_weight_matrices(wavelet, level)
 
 dense_xcorrs  = calculate_nlevel_xcorrs(stacked_weight_matrices, stacked_mixed_weight_matrices,
@@ -73,6 +76,8 @@ relative_errors = np.abs(sparse_xcorrs - dense_xcorrs) / (np.abs(dense_xcorrs) +
 print(np.max(relative_errors))
 
 print(np.mean(relative_errors), np.median(relative_errors))
+
+#print(np.mean(sparse_xcorrs))
 
 samples = 100
 dense_times = np.zeros(100)
