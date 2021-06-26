@@ -68,12 +68,16 @@ def calculate_nlevel_xcorrs(weight_matrices, mixed_weight_matrices, mixed_endpoi
         length_right = weight_matrices[i][2].shape[1]
         steps1       = steps[i]
         
-        left_diags, right_diags = compute_all_diags(coeffs1[i], coeffs2[i], length_left,
-                                                    length_right, shifts[i])
 
-        # Here we loop over each stride of xcorrs for this level:
-        xcorrs += compute_vectorized_timelags(weight_matrices[i], left_diags, right_diags, coeff1_begins[i],
-                                              coeff1_ends[i], coeffs2[i][:steps1], coeffs2[i][-steps1:])
+        # We need to see if level i in either coeffs1 or coeffs2 is zero:
+        if (coeffs1[i].any()) and (coeffs2[i].any()):
+
+            left_diags, right_diags = compute_all_diags(coeffs1[i], coeffs2[i], length_left,
+                                                        length_right, shifts[i])
+
+            # Here we loop over each stride of xcorrs for this level:
+            xcorrs += compute_vectorized_timelags(weight_matrices[i], left_diags, right_diags, coeff1_begins[i],
+                                                  coeff1_ends[i], coeffs2[i][:steps1], coeffs2[i][-steps1:])
 
         # Here we proceed to the mixed terms:
         # We have to iterate through each mixed matrix, which only has matrices for smaller wavelets:
@@ -92,40 +96,45 @@ def calculate_nlevel_xcorrs(weight_matrices, mixed_weight_matrices, mixed_endpoi
             scale_diff  = 2**(levels[i]-levels[smaller_level])
 
             # CASE 1: we handle the coeffs1 term x the coeffs2 term for this level:
+            # First, we need to see if level i in coeffs1 or smaller_level in coeffs2 is zero:
+            if (coeffs1[i].any()) and (coeffs2[smaller_level].any()):
             
-            # Here we deal with the interior terms:
-            diags = mixed_compute_all_diags(coeffs1[i], coeffs2[smaller_level], scale_diff,
-                                            mixed_endpoint_indices[i][j], shift, length_diag, len_coeffs2[i])
+                # Here we deal with the interior terms:
+                diags = mixed_compute_all_diags(coeffs1[i], coeffs2[smaller_level], scale_diff,
+                                                mixed_endpoint_indices[i][j], shift, length_diag, len_coeffs2[i])
             
-            xcorrs += mixed_compute_vectorized_timelags(mixed_weight_matrices[i][j], diags)
+                xcorrs += mixed_compute_vectorized_timelags(mixed_weight_matrices[i][j], diags)
             
-            # He we calculate the endpoint multiplications:
-            begin_end  = [coeff1_begins[i] @ mixed_weight_matrices[i][j][0] @ coeff2_begins[i+j][_]
-                        + coeff1_ends[i] @ mixed_weight_matrices[i][j][2] @ coeff2_ends[i+j][_]
-                          for _ in range(-scale_diff, 0)]
+                # He we calculate the endpoint multiplications:
+                begin_end  = [coeff1_begins[i] @ mixed_weight_matrices[i][j][0] @ coeff2_begins[i+j][_]
+                            + coeff1_ends[i] @ mixed_weight_matrices[i][j][2] @ coeff2_ends[i+j][_]
+                              for _ in range(-scale_diff, 0)]
             
-            # We reformat the output's shape, and add it to xcorrs:
-            xcorrs += np.concatenate(begin_end).flatten(order='F')
+                # We reformat the output's shape, and add it to xcorrs:
+                xcorrs += np.concatenate(begin_end).flatten(order='F')
 
             # CASE 2: where we get the longer wavelet function from coeffs2 instead of coeffs1
-            diags = mixed_compute_all_diags_case2(coeffs2[i], coeffs1[smaller_level], scale_diff, mixed_endpoint_indices[i][j],
-                                                  inverse_shifts[smaller_level]+1, length_diag, len_coeffs2[i])
+            # First, we need to see if smaller_level in coeffs1 or i in coeffs2 is zero:
+            if (coeffs1[smaller_level].any()) and (coeffs2[i].any()):
+
+                diags = mixed_compute_all_diags_case2(coeffs2[i], coeffs1[smaller_level], scale_diff, mixed_endpoint_indices[i][j],
+                                                      inverse_shifts[smaller_level]+1, length_diag, len_coeffs2[i])
             
-            # Here we flip our appropriate weight matrix:
-            flipped_matrix = (mixed_weight_matrices[i][j][0], np.zeros(mixed_weight_matrices[i][j][1].shape),
-                              mixed_weight_matrices[i][j][2])
+                # Here we flip our appropriate weight matrix:
+                flipped_matrix = (mixed_weight_matrices[i][j][0], np.zeros(mixed_weight_matrices[i][j][1].shape),
+                                  mixed_weight_matrices[i][j][2])
             
-            flipped_matrix[1][:] = np.flip(mixed_weight_matrices[i][j][1], axis=0)
+                flipped_matrix[1][:] = np.flip(mixed_weight_matrices[i][j][1], axis=0)
             
-            # The first diagonal entry is only used for timelag 0, so we will need to truncate the front end
-            # of the resulting xcorrs:
-            xcorrs += mixed_compute_vectorized_timelags(flipped_matrix, diags)[stride-1:-1]
+                # The first diagonal entry is only used for timelag 0, so we will need to truncate the front end
+                # of the resulting xcorrs:
+                xcorrs += mixed_compute_vectorized_timelags(flipped_matrix, diags)[stride-1:-1]
             
-            # Like for case 1, we add the beginning and end components to the xcorrs:
-            begin_end = (coeffs2[i][:steps1]  @ np.flip(mixed_weight_matrices[i][j][0], axis=0) @ case2_coeff2_begins[i+j]
-                       + coeffs2[i][-steps1:] @ np.flip(mixed_weight_matrices[i][j][2], axis=0) @ case2_coeff2_ends[i+j])
+                # Like for case 1, we add the beginning and end components to the xcorrs:
+                begin_end = (coeffs2[i][:steps1]  @ np.flip(mixed_weight_matrices[i][j][0], axis=0) @ case2_coeff2_begins[i+j]
+                           + coeffs2[i][-steps1:] @ np.flip(mixed_weight_matrices[i][j][2], axis=0) @ case2_coeff2_ends[i+j])
             
-            xcorrs += begin_end.flatten(order='F')[stride-1:-1]
+                xcorrs += begin_end.flatten(order='F')[stride-1:-1]
         
     return xcorrs
 

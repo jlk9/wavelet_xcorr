@@ -35,7 +35,7 @@ lags                        integer, the largest time lag of the cross correlati
                                 to lags.
 
 Returns:
-xcorr                   the overall cross correlations between the two transformed signals, from 0 to lags
+xcorr       the overall cross correlations between the two transformed signals, from 0 to lags
 """
 def calculate_nlevel_xcorrs_sparse(weight_matrices, mixed_weight_matrices, mixed_endpoint_indices, 
                                    sparse_coeffs1, sparse_coeffs2, lags):
@@ -61,17 +61,20 @@ def calculate_nlevel_xcorrs_sparse(weight_matrices, mixed_weight_matrices, mixed
     
     # Here we add the basic, non-mixed terms
     for i in range(len(weight_matrices)):
-        
+
         length_left  = weight_matrices[i][1].shape[1]
         length_right = weight_matrices[i][2].shape[1]
-        
-        left_diags, right_diags = compute_all_diags_sparse(sparse_coeffs1[i], sparse_coeffs2[i], length_left,
-                                                           length_right, shifts[i])
 
-        # Here we loop over each stride of xcorrs for this level:
-        # NOTE: if we change the endpoints for coeffs2, this might need to change
-        xcorrs += compute_vectorized_timelags_sparse(weight_matrices[i], left_diags, right_diags, coeff1_begins[i][:shifts[i]],
-                                                     coeff1_ends[i][:shifts[i]], coeff2_begins[i][0], coeff2_ends[i][0])
+        # We need to see if level i in either coeffs1 or coeffs2 is zero:
+        if (sparse_coeffs1[i][0].shape[0] != 0) and (sparse_coeffs2[i][0].shape[0] != 0):
+        
+            left_diags, right_diags = compute_all_diags_sparse(sparse_coeffs1[i], sparse_coeffs2[i], length_left,
+                                                               length_right, shifts[i])
+
+            # Here we loop over each stride of xcorrs for this level:
+            # NOTE: if we change the endpoints for coeffs2, this might need to change
+            xcorrs += compute_vectorized_timelags_sparse(weight_matrices[i], left_diags, right_diags, coeff1_begins[i][:shifts[i]],
+                                                         coeff1_ends[i][:shifts[i]], coeff2_begins[i][0], coeff2_ends[i][0])
 
         # Here we proceed to the mixed terms:
         # We have to iterate through each mixed matrix, which only has matrices for smaller wavelets:
@@ -85,43 +88,49 @@ def calculate_nlevel_xcorrs_sparse(weight_matrices, mixed_weight_matrices, mixed
             length_diag   = mixed_weight_matrices[i][j][1].shape[1]
             scale_diff    = 2**(levels[i]-levels[smaller_level])
 
-            # CASE 1: we handle the coeffs1 term x the coeffs2 term for this level:
+            # CASE 1: we handle the coeffs1 term x the coeffs2 term for this level
+            # First, we need to see if level i in coeffs1 or smaller_level in coeffs2 is zero:
+            if (sparse_coeffs1[i][0].shape[0] != 0) and (sparse_coeffs2[smaller_level][0].shape[0] != 0):
             
-            # Here we deal with the interior terms:
-            diags = mixed_compute_all_diags_sparse(sparse_coeffs1[i], sparse_coeffs2[smaller_level], scale_diff,
-                                                   mixed_endpoint_indices[i][j], shift, length_diag, len_coeffs2[i])
+                # Here we deal with the interior terms:
+                diags = mixed_compute_all_diags_sparse(sparse_coeffs1[i], sparse_coeffs2[smaller_level], scale_diff,
+                                                       mixed_endpoint_indices[i][j], shift, length_diag, len_coeffs2[i])
             
-            xcorrs += mixed_compute_vectorized_timelags_sparse(mixed_weight_matrices[i][j], diags)
+                xcorrs += mixed_compute_vectorized_timelags_sparse(mixed_weight_matrices[i][j], diags)
             
-            # He we calculate the endpoint multiplications:
-            begin_end  = [coeff1_begins[i][:shifts[i]] @ mixed_weight_matrices[i][j][0] @ coeff2_begins[smaller_level][_]
-                        + coeff1_ends[i][:shifts[i]] @ mixed_weight_matrices[i][j][2] @ coeff2_ends[smaller_level][_]
-                          for _ in range(-scale_diff, 0)]
+                # He we calculate the endpoint multiplications:
+                begin_end  = [coeff1_begins[i][:shifts[i]] @ mixed_weight_matrices[i][j][0] @ coeff2_begins[smaller_level][_]
+                            + coeff1_ends[i][:shifts[i]] @ mixed_weight_matrices[i][j][2] @ coeff2_ends[smaller_level][_]
+                              for _ in range(-scale_diff, 0)]
             
-            # We reformat the output's shape, and add it to xcorrs:
-            xcorrs += np.concatenate(begin_end).flatten(order='F')
+                # We reformat the output's shape, and add it to xcorrs:
+                xcorrs += np.concatenate(begin_end).flatten(order='F')
+
 
             # CASE 2: where we get the longer wavelet function from coeffs2 instead of coeffs1
-            diags = mixed_compute_all_diags_case2_sparse(sparse_coeffs2[i], sparse_coeffs1[smaller_level], scale_diff,
-                                                         mixed_endpoint_indices[i][j], inverse_shifts[smaller_level]+1,
-                                                         length_diag, len_coeffs2[i])
+            # First, we need to see if smaller_level in coeffs1 or i in coeffs2 is zero:
+            if (sparse_coeffs1[smaller_level][0].shape[0] != 0) and (sparse_coeffs2[i][0].shape[0] != 0):
+
+                diags = mixed_compute_all_diags_case2_sparse(sparse_coeffs2[i], sparse_coeffs1[smaller_level], scale_diff,
+                                                             mixed_endpoint_indices[i][j], inverse_shifts[smaller_level]+1,
+                                                             length_diag, len_coeffs2[i])
             
-            # Here we flip our appropriate weight matrix:
-            flipped_matrix = (mixed_weight_matrices[i][j][0], np.zeros(mixed_weight_matrices[i][j][1].shape),
-                              mixed_weight_matrices[i][j][2])
+                # Here we flip our appropriate weight matrix:
+                flipped_matrix = (mixed_weight_matrices[i][j][0], np.zeros(mixed_weight_matrices[i][j][1].shape),
+                                  mixed_weight_matrices[i][j][2])
             
-            flipped_matrix[1][:] = np.flip(mixed_weight_matrices[i][j][1], axis=0)
+                flipped_matrix[1][:] = np.flip(mixed_weight_matrices[i][j][1], axis=0)
             
-            # The first diagonal entry is only used for timelag 0, so we will need to truncate the front end
-            # of the resulting xcorrs:
-            xcorrs += mixed_compute_vectorized_timelags_sparse(flipped_matrix, diags)[stride-1:-1]
+                # The first diagonal entry is only used for timelag 0, so we will need to truncate the front end
+                # of the resulting xcorrs:
+                xcorrs += mixed_compute_vectorized_timelags_sparse(flipped_matrix, diags)[stride-1:-1]
             
-            # Like for case 1, we add the beginning and end components to the xcorrs:
-            # NOTE: if we change the endpoints for coeffs2, this might need to change
-            begin_end = (coeff2_begins[i][0] @ np.flip(mixed_weight_matrices[i][j][0], axis=0) @ coeff1_begins[smaller_level].T
-                       + coeff2_ends[i][0]   @ np.flip(mixed_weight_matrices[i][j][2], axis=0) @ coeff1_ends[smaller_level].T)
+                # Like for case 1, we add the beginning and end components to the xcorrs:
+                # NOTE: if we change the endpoints for coeffs2, this might need to change
+                begin_end = (coeff2_begins[i][0] @ np.flip(mixed_weight_matrices[i][j][0], axis=0) @ coeff1_begins[smaller_level].T
+                           + coeff2_ends[i][0]   @ np.flip(mixed_weight_matrices[i][j][2], axis=0) @ coeff1_ends[smaller_level].T)
             
-            xcorrs += begin_end.flatten(order='F')[stride-1:-1]
+                xcorrs += begin_end.flatten(order='F')[stride-1:-1]
         
     return xcorrs
 
