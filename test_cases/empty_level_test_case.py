@@ -1,5 +1,4 @@
-
-# Goal: Put together a basic test case to highlight the wavelet cross-correlation algorithm.
+# In this case, we're zeroing out an entire level of wavelet coefficients.
 
 # Written by Joseph Kump, josek97@vt.edu
 # Last modified 6/26/2021
@@ -25,7 +24,7 @@ from wavelet_xcorr.sparse_code.calculate_nlevel_xcorrs_sparse  import calculate_
 """
 
 wavelet = "db3"
-level   = 4
+level   = 3
 mode    = "periodic"
 
 # Here we'll test our timing and accuracy on an autocorrelation:
@@ -51,40 +50,45 @@ coeffs1 = pywt.wavedec(signal1, wavelet, level=level, mode=mode)
 coeffs2 = pywt.wavedec(signal2, wavelet, level=level, mode=mode)
 lagmax  = 1008
 
-# First, we need to threshold our wavelet functions and create their sparse representations.
-# For now, we're thresholding each level separately.
-threshold      = 90
-thresh_coeffs1 = threshold_coeffs_one_channel(coeffs1, threshold)
-thresh_coeffs2 = threshold_coeffs_one_channel(coeffs2, threshold)
-sparse_coeffs1 = make_sparse_coeffs(thresh_coeffs1)
-sparse_coeffs2 = make_sparse_coeffs(thresh_coeffs2)
+# First, we need to compress our wavelet functions and create their sparse representations.
+# We're going to zero out the detail 1 coefficients in both signals.
+comp_coeffs1   = [coeffs1[0], coeffs1[1], coeffs1[2], np.zeros(coeffs1[3].shape)]
+comp_coeffs2   = [coeffs2[0], coeffs2[1], np.zeros(coeffs2[2].shape), coeffs2[3]]
+sparse_coeffs1 = make_sparse_coeffs(comp_coeffs1)
+sparse_coeffs2 = make_sparse_coeffs(comp_coeffs2)
 
-print(sparse_coeffs1)
+# For comparisons, we'll reconstruct the original signal using our compressed coefficients:
+comp_signal1 = pywt.waverec(comp_coeffs1, wavelet, mode=mode)
+comp_signal2 = pywt.waverec(comp_coeffs2, wavelet, mode=mode)
+
+print([_[0].shape[0] == 0 for _ in sparse_coeffs1])
 
 
 # Let's just check and make sure our weight matrices are reorganized properly:
 stacked_weight_matrices, stacked_mixed_weight_matrices, mixed_endpoint_indices = generate_stacked_weight_matrices(wavelet, level)
 
-time_xcorrs   = np.correlate(signal1[:len(signal2)+lagmax-1], signal2, mode="valid")
+time_xcorrs   = np.correlate(comp_signal1[:len(comp_signal2)+lagmax-1], comp_signal2, mode="valid")
 
 dense_xcorrs  = calculate_nlevel_xcorrs(stacked_weight_matrices, stacked_mixed_weight_matrices,
-                                        mixed_endpoint_indices, thresh_coeffs1, thresh_coeffs2, lagmax)
+                                        mixed_endpoint_indices, comp_coeffs1, comp_coeffs2, lagmax)
 
 sparse_xcorrs = calculate_nlevel_xcorrs_sparse(stacked_weight_matrices, stacked_mixed_weight_matrices,
                                                mixed_endpoint_indices, sparse_coeffs1, sparse_coeffs2, lagmax)
 
-relative_errors = np.abs(sparse_xcorrs - time_xcorrs) / (np.abs(time_xcorrs) + 1)
+relative_errors_dense = np.abs(dense_xcorrs - time_xcorrs) / (np.abs(time_xcorrs) + 1)
+relative_errors_sparse = np.abs(sparse_xcorrs - time_xcorrs) / (np.abs(time_xcorrs) + 1)
 
-plt.figure(figsize=(16,6))
-plt.plot(time_xcorrs)
-plt.plot(sparse_xcorrs)
-plt.savefig("xcorrs.pdf", format="pdf")
-plt.show()
+#plt.figure(figsize=(16,6))
+#plt.plot(time_xcorrs)
+#plt.plot(sparse_xcorrs)
+#plt.savefig("xcorrs.pdf", format="pdf")
+#plt.show()
 
+print("Dense errors:")
+print(np.max(relative_errors_dense), np.mean(relative_errors_dense), np.median(relative_errors_dense))
 
-print(np.max(relative_errors))
-
-print(np.mean(relative_errors), np.median(relative_errors))
+print("Sparse errors:")
+print(np.max(relative_errors_sparse), np.mean(relative_errors_sparse), np.median(relative_errors_sparse))
 
 #print(np.mean(sparse_xcorrs))
 
@@ -95,7 +99,7 @@ sparse_times = np.zeros(100)
 for i in range(samples):
     t0 = time.time()
     dense_xcorrs = calculate_nlevel_xcorrs(stacked_weight_matrices, stacked_mixed_weight_matrices,
-                                           mixed_endpoint_indices, thresh_coeffs1, thresh_coeffs2, lagmax)
+                                           mixed_endpoint_indices, comp_coeffs1, comp_coeffs2, lagmax)
     t1 = time.time()
     dense_times[i] = t1 - t0
 
