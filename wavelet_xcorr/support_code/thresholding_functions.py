@@ -60,21 +60,24 @@ Returns:
     of the DWT.
 
 """
-def store_wavelet_hdf5(input_path, output_path, files, wavelet, level, percentile):
+def store_wavelet_hdf5(input_path, output_path, files, data_name, transposed, wavelet, level, percentile):
 
     for file in files:
 
         h5_file = h5py.File(input_path + file, 'r')
-        DAS     = h5_file['DAS'][:]
-        DAS     = DAS.astype(np.float64)
+        data    = h5_file[data_name][:]
+        data    = data.astype(np.float64)
+
+        if transposed == "yes":
+            data = data.T
         
         h5_file.close()
 
-        coeffs = pywt.wavedec(DAS.T, wavelet, level=level, mode="periodic")
+        coeffs = pywt.wavedec(data, wavelet, level=level, mode="periodic")
         
         # Threshold each channel here:
         if percentile != 0:
-            for i in range(0, DAS.shape[1]):
+            for i in range(0, data.shape[0]):
                 
                 thresheld_coeffs = threshold_coeffs_one_channel([coeff[i] for coeff in coeffs], percentile)
                 
