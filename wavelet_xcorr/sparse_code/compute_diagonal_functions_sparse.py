@@ -11,7 +11,7 @@ from ctypes import c_void_p, c_double, c_int, cdll
 from numpy.ctypeslib import ndpointer
 
 # This loads the compiled C code and the function, getting its path relative to this module:
-lib                   = cdll.LoadLibrary(__file__[:-61] + 'bin/diag_helper_sparse.so')
+lib                   = cdll.LoadLibrary(__file__[:-62] + 'bin/diag_helper_sparse.so')
 sparse_xcorr_sum_void = lib.sparse_xcorr_sum_void
 
 # Now we need to load our function, which was already compiled with the following command:
