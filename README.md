@@ -17,3 +17,53 @@ The source code is all located within the `wavelet_xcorr` subdirectory. It is or
 
 In a typical use case, you would use either `dense_code` or `sparse_code`, depending on the form of compression being utilized: `dense_code` is better for computing with uncompressed wavelet coefficients and bandpass filtering (where some levels are zeroed out, but other levels are not changed at all), while `sparse_code` is better for compression techniques that zero out large numbers of wavelet coefficients in every level, such as thresholding. Both methods require the use of a correlation matrix, which contains the precomputed values of cross-correlations of individual wavelet functions in a discrete wavelet transform - functions for generating correlation matrices are available in `support_code`.
 
+## Using this repository
+
+This repository is set up to be installed locally as a library using pip. To do so, type the following command into your command line interface:
+
+`python -m pip install -e`
+
+If your python installation is only on your user account, then add a `--user` tag before `-e`.
+
+### Requirements
+
+Obviously Python is required. In particular, this repository was written and tested with Python 3.8.3. Generally, an Anaconda installation of Python should be sufficient.
+
+1. `dense_code` requires NumPy and SciPy.
+2. `sparse_code` requires NumPy, SciPy, and ctypes. It also requires C (tested using Apple clang version 12.0.0), and for you to run the following line in the `sparse_code` directory: `cc -fPIC -shared -o ../../bin/diag_helper_sparse.so ./diag_helper_sparse.c`.
+3. `support_code` requires NumPy, SciPy, PyWavelet, and h5py.
+
+### Quickstart
+
+Suppose you have two series of time-domain data, named `signal1` and `signal2`. You use PyWavelet to get the DWT coefficients of these series, called `coeffs1` and `coeffs2` respectively.
+
+Before we can compute the temporal cross-correlations of `coeffs1` and `coeffs2`, we need to get a correlation matrix:
+
+```
+wavelet = 'db3'
+level   = 3
+
+weight_matrices, mixed_weight_matrices, mixed_endpoint_indices = generate_stacked_weight_matrices(wavelet, level)
+```
+
+The arrays in `weight_matrices`, `mixed_weight_matrices`, and `mixed_endpoint_indices` contain the cross-correlations of different wavelets within the desired DWT (in this case the Daubechies 3 wavelet family with 3 levels). These objects can be reused for the cross-correlations of any wavelet coefficients corresponding to a DWT of the same wavelet family and level, serving as the "weights" of our computation. Once we get our weights, we can then compute the cross-correlation of our two signals along a range of time-lags 0 to `lagmax` with:
+
+```
+dense_xcorrs  = calculate_nlevel_xcorrs(weight_matrices, mixed_weight_matrices, mixed_endpoint_indices, coeffs1, coeffs2, lagmax)
+```
+
+We can alternatively store sparse approximations of `coeffs1` and `coeffs2` (potentially attained by `threshold_coeffs_one_channel` and `make_sparse_coeffs`), and use the sparse implementation instead:
+
+```
+sparse_xcorrs = calculate_nlevel_xcorrs_sparse(weight_matrices, mixed_weight_matrices, mixed_endpoint_indices, sparse_coeffs1, sparse_coeffs2, lagmax)
+```
+
+An example of creating weights and computing both sparse and dense wavelet-domain cross-correlations is available in `basic_test_case.py`, located in the `test_cases` repository.
+
+### Limitations and Guidelines for Use
+
+
+
+
+
+
