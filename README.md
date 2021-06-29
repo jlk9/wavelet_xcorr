@@ -46,7 +46,7 @@ level   = 3     # Whatever level you used in the DWT to get coeffs1 and coeffs2
 weight_matrices, mixed_weight_matrices, mixed_endpoint_indices = generate_stacked_weight_matrices(wavelet, level)
 ```
 
-The arrays in `weight_matrices`, `mixed_weight_matrices`, and `mixed_endpoint_indices` contain the cross-correlations of different wavelets within the desired DWT (in this case the Daubechies 3 wavelet family with 3 levels). These objects can be reused for the cross-correlations of any wavelet coefficients corresponding to a DWT of the same wavelet family and level, serving as the "weights" of our computation. Once we get the cross-correlation matrices, we can then compute the cross-correlation of our two signals along a range of time-lags 0 to `lagmax` with:
+The arrays in `weight_matrices`, `mixed_weight_matrices`, and `mixed_endpoint_indices` contain the cross-correlations of different wavelets within the desired DWT (in this case the Daubechies 3 wavelet family with 3 levels). These objects can be reused for the cross-correlations of any wavelet coefficients corresponding to a DWT of the same wavelet family and level, serving as the "weights" of our computation. Once we get the cross-correlation matrices, we can then compute the cross-correlation of our two signals along a range of time-lags `0` to `lagmax` with:
 
 ```
 dense_xcorrs  = calculate_nlevel_xcorrs(weight_matrices, mixed_weight_matrices, mixed_endpoint_indices, coeffs1, coeffs2, lagmax)
@@ -70,7 +70,7 @@ Using the terminology in Quickstart, suppose we have two time series `signal1` a
 - `lagmax` must be divisible by 2^(level of DWT used).
 - For the dense implementation, `len(signal2) + lagmax` must be less than `len(signal1)`. This is *not* required for the sparse implementation.
 
-In short, zero-pad the time series and the range of time-lags being tested so they're all divisible by the step size of wavelets used in the given DWT. This guarantees all functions within the wavelet family used for the DWT line up nicely with the two time series at every time-lag being evaluated. Failure to pad these components can increase the numerical error of the function, and potentially cause Python errors as well.
+In short, zero-pad the time series and the range of time-lags being tested so they're all divisible by the step size of wavelets used in the given DWT. This guarantees all functions within the wavelet family used for the DWT line up nicely with the two time series at every time-lag being evaluated. Failure to pad these components can increase the numerical error of the output, and potentially cause Python errors as well.
 
 In general, the dense implementation is somewhat slower than time-domain cross-correlations computed via FFTs, but should scale similarly with larger problem sizes and can achieve excellent performance if wavelet compression is used as a bandpass filter (where only certain levels of wavelet coefficients are preserved). The sparse implementation is faster than FFT computations if the compression factor and the problem sizes are high enough - it works best if most of the wavelet coefficients within each level are zeroed out by compression.
 
