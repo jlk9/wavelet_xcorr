@@ -30,7 +30,7 @@ If your python installation is only on your user account, then add a `--user` ta
 Obviously Python is required. In particular, this repository was written and tested with Python 3.8.3. Generally, an Anaconda installation of Python should be sufficient.
 
 1. `dense_code` requires NumPy and SciPy.
-2. `sparse_code` requires NumPy, SciPy, and ctypes. It also requires C (tested using Apple clang version 12.0.0), and for you to run the following line in the `sparse_code` directory: `cc -fPIC -shared -o ../../bin/diag_helper_sparse.so ./diag_helper_sparse.c`.
+2. `sparse_code` requires NumPy, SciPy, and ctypes. It also requires C (tested using Apple clang version 12.0.0), and for you to run the following line in the `sparse_code` directory: `cc -fPIC -shared -o ../../bin/diag_helper_sparse.so ./diag_helper_sparse.c`. This compiles the C helper function used for sparse cross-correlation summation.
 3. `support_code` requires NumPy, SciPy, PyWavelet, and h5py.
 
 ### Quickstart
