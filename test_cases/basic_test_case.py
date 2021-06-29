@@ -10,6 +10,8 @@ import pywt
 import time
 import matplotlib.pyplot as plt
 
+from scipy.signal import correlate
+
 from wavelet_xcorr.support_code.generate_all_weights_functions import generate_stacked_weight_matrices
 from wavelet_xcorr.support_code.thresholding_functions         import threshold_coeffs_one_channel, make_sparse_coeffs
 from wavelet_xcorr.dense_code.calculate_nlevel_xcorrs          import calculate_nlevel_xcorrs
@@ -44,8 +46,6 @@ noise_std  = 2000
 signal1   += np.random.normal(noise_mean, noise_std, len(signal1))
 
 signal2 = signal1[200:15208]
-#signal1 = signal1[:3008]
-#signal2 = signal1[200:1704]
 
 coeffs1 = pywt.wavedec(signal1, wavelet, level=level, mode=mode)
 coeffs2 = pywt.wavedec(signal2, wavelet, level=level, mode=mode)
@@ -59,13 +59,13 @@ thresh_coeffs2 = threshold_coeffs_one_channel(coeffs2, threshold)
 sparse_coeffs1 = make_sparse_coeffs(thresh_coeffs1)
 sparse_coeffs2 = make_sparse_coeffs(thresh_coeffs2)
 
-print(sparse_coeffs1)
 
-
-# Let's just check and make sure our weight matrices are reorganized properly:
+# Here we generate our cross-correlation matrices:
 stacked_weight_matrices, stacked_mixed_weight_matrices, mixed_endpoint_indices = generate_stacked_weight_matrices(wavelet, level)
 
-time_xcorrs   = np.correlate(signal1[:len(signal2)+lagmax-1], signal2, mode="valid")
+# Here we get the original time-domain cross-correlations, as well as thresholded wavelet-domain cross-correlations through the
+# dense and sparse methods.
+time_xcorrs   = correlate(signal1[:len(signal2)+lagmax-1], signal2, mode="valid")
 
 dense_xcorrs  = calculate_nlevel_xcorrs(stacked_weight_matrices, stacked_mixed_weight_matrices,
                                         mixed_endpoint_indices, thresh_coeffs1, thresh_coeffs2, lagmax)
@@ -73,24 +73,40 @@ dense_xcorrs  = calculate_nlevel_xcorrs(stacked_weight_matrices, stacked_mixed_w
 sparse_xcorrs = calculate_nlevel_xcorrs_sparse(stacked_weight_matrices, stacked_mixed_weight_matrices,
                                                mixed_endpoint_indices, sparse_coeffs1, sparse_coeffs2, lagmax)
 
-relative_errors = np.abs(sparse_xcorrs - time_xcorrs) / (np.abs(time_xcorrs) + 1)
+
+
+dense_relative_errors  = np.abs(dense_xcorrs - time_xcorrs) / (np.abs(time_xcorrs) + 1)
+sparse_relative_errors = np.abs(sparse_xcorrs - time_xcorrs) / (np.abs(time_xcorrs) + 1)
 
 plt.figure(figsize=(16,6))
 plt.plot(time_xcorrs)
 plt.plot(sparse_xcorrs)
+plt.title("Wavelet Cross-Correlations")
+plt.xlabel("Time-Lag")
+plt.ylabel("Amplitude")
+plt.legend(["Time-Domain", "Thresholded Wavelet Domain (Sparse)"])
 plt.savefig("xcorrs.pdf", format="pdf")
 plt.show()
 
 
-print(np.max(relative_errors))
+print("Relative errors of dense thresholded cross-correlation (should be somewhat high):")
+print(np.max(dense_relative_errors), np.mean(dense_relative_errors), np.median(dense_relative_errors))
 
-print(np.mean(relative_errors), np.median(relative_errors))
+print("Relative errors of sparse thresholded cross-correlation (should be somewhat high):")
+print(np.max(sparse_relative_errors), np.mean(sparse_relative_errors), np.median(sparse_relative_errors))
 
-#print(np.mean(sparse_xcorrs))
 
+# Runtimes
 samples = 100
-dense_times = np.zeros(100)
-sparse_times = np.zeros(100)
+original_times = np.zeros(samples)
+dense_times    = np.zeros(samples)
+sparse_times   = np.zeros(samples)
+
+for i in range(samples):
+    t0 = time.time()
+    original_xcorrs = correlate(signal1[:len(signal2)+lagmax-1], signal2, mode="valid")
+    t1 = time.time()
+    original_times[i] = t1 - t0
 
 for i in range(samples):
     t0 = time.time()
@@ -106,5 +122,6 @@ for i in range(samples):
     t1 = time.time()
     sparse_times[i] = t1 - t0
 
-print(np.mean(dense_times), np.mean(sparse_times))
+print("Runtimes: time-domain, dense wavelet-domain, sparse wavelet-domain")
+print(np.mean(original_times), np.mean(dense_times), np.mean(sparse_times))
 
