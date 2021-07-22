@@ -5,6 +5,8 @@ Cross-correlations in the wavelet domain.
 
 This repository contains a library of functions for performing temporal cross-correlations on wavelet-domain data. Traditionally, cross-correlation analysis on wavelet-compressed data is done by reconstructing the original time-series data or an approximation of it (via an inverse wavelet transform), and then computing the cross-correlations using direct or FFT-based methods. This library eliminates the intermediate step, allowing us to compute the temporal cross-correlations directly using the wavelet coefficients. In addition to the usual benefits of wavelet compression, such as noise reduction and bandpass filtering, our approach reduces the storage requirements for cross-correlation analysis (since we no longer need to do store a time-domain representation of our data), and can improve the speed of analysis in some cases.
 
+The wavelet-domain cross-correlation algorithm in this repository is desgined to be general-purpose, for any time-series data with equally spaced points that might be stored using its wavelet coefficients from a DWT. While it works correctly on wavelet-domain data in general, computational and storage benefits are gained when some form of compression is applied to the wavelet-domain data, such as thresholding or filtering by wavelet level.
+
 A detailed description of the underlying theory and method that motivates this implementation, as well as the benefits, is available in the electronic thesis document here: [https://vtechworks.lib.vt.edu/handle/10919/103864](https://vtechworks.lib.vt.edu/handle/10919/103864).
 
 ## Organization
@@ -73,5 +75,7 @@ Using the terminology in Quickstart, suppose we have two time series `signal1` a
 In short, zero-pad the time series and the range of time-lags being tested so they're all divisible by the step size of wavelets used in the given DWT. This guarantees all functions within the wavelet family used for the DWT line up nicely with the two time series at every time-lag being evaluated. Failure to pad these components can increase the numerical error of the output, and potentially cause Python errors as well.
 
 In general, the dense implementation is somewhat slower than time-domain cross-correlations computed via FFTs, but should scale similarly with larger problem sizes and can achieve excellent performance if wavelet compression is used as a bandpass filter (where only certain levels of wavelet coefficients are preserved). The sparse implementation is faster than FFT computations if the compression factor and the problem sizes are high enough - it works best if most of the wavelet coefficients within each level are zeroed out by compression.
+
+Best results for wavelet-compressed cross-correlations (both in terms of accuracy and computational performance) is dependent on the orthogonal wavelet family and number of levels used in the DWT, as well as the means of compression. It may take some experimenting to determine what wavelets and type of compression work best for your use case.
 
 
